@@ -1,7 +1,6 @@
 package limit
 
 import (
-	"log"
 	"os"
 	"testing"
 	"time"
@@ -18,10 +17,6 @@ var (
 	emptyUint32   uint32
 	emptyDuration time.Duration
 )
-
-func init() {
-	log.SetFlags(log.Lmicroseconds)
-}
 
 func clearDB(t testing.TB, db *badger.DB) {
 	if db != nil {
@@ -121,7 +116,6 @@ func update(t *testing.T) {
 	get(t, func(txn *badger.Txn) error {
 		pending, err := bucket.GetPending(txn)
 		assert.NoError(t, err)
-		log.Println("finished")
 		assert.Equal(t, uint32(0), pending, "pending should be 0 after waiting")
 		return nil
 	})
