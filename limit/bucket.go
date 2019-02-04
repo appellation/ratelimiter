@@ -2,10 +2,16 @@ package limit
 
 import (
 	"encoding/binary"
+	"errors"
 	"math"
 	"time"
 
 	"github.com/dgraph-io/badger"
+)
+
+// Errors
+var (
+	ErrEmptyBucket = errors.New("buckets cannot have size 0")
 )
 
 // Bucket represents a ratelimit bucket
@@ -20,7 +26,7 @@ type Bucket struct {
 // NewBucket makes a new ratelimit bucket. Panics if size is 0.
 func NewBucket(db *badger.DB, info BucketInfo) (*Bucket, error) {
 	if info.Size == 0 {
-		panic("buckets cannot be created with size 0")
+		return nil, ErrEmptyBucket
 	}
 
 	return &Bucket{
