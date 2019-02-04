@@ -1,4 +1,4 @@
-package limit
+package ratelimiter
 
 import (
 	"os"
