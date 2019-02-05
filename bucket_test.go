@@ -85,10 +85,6 @@ func TestBucket(t *testing.T) {
 	defer clearDB(t, db)
 	bucket = createBucket(t, db)
 
-	t.Run("Update", update)
-}
-
-func update(t *testing.T) {
 	get(t, func(txn *badger.Txn) error {
 		pending, err := bucket.GetPending(txn)
 		assert.NoError(t, err)
@@ -126,6 +122,9 @@ func update(t *testing.T) {
 	})
 
 	count := rand.Intn(1000)
+	for count < int(bucket.Size) {
+		count = rand.Intn(1000)
+	}
 	set(t, func(txn *badger.Txn) error {
 		pending, err := bucket.Incr(txn, count)
 		assert.NoError(t, err)
@@ -137,6 +136,14 @@ func update(t *testing.T) {
 		pending, err := bucket.GetPending(txn)
 		assert.NoError(t, err)
 		assert.Equal(t, count, int(pending), "pending should equal random count on separate fetch")
+		return nil
+	})
+
+	time.Sleep(bucket.Interval + 1*time.Second)
+	get(t, func(txn *badger.Txn) error {
+		pending, err := bucket.GetPending(txn)
+		assert.NoError(t, err)
+		assert.Equal(t, uint32(count)-bucket.Size, pending, "pending should be equal to count less the bucket size after waiting the interval")
 		return nil
 	})
 }

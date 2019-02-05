@@ -134,16 +134,16 @@ func (b *Bucket) Incr(txn *badger.Txn, count int) (pending uint32, err error) {
 	}
 
 	var newCount uint32
-	uCount := uint32(count)
 	if count < 0 {
 		// prevent integer underflows
+		uCount := uint32(-count)
 		if pending > uCount {
 			newCount = pending - uCount
 		} else {
 			newCount = 0
 		}
 	} else {
-		newCount = pending + uCount
+		newCount = pending + uint32(count)
 		if newCount < pending {
 			panic("integer overflow: pending requests exceeded max uint32")
 		}
@@ -186,13 +186,5 @@ loop:
 				errFn(err)
 			}
 		}
-	}
-
-	err = b.db.Update(func(txn *badger.Txn) error {
-		return txn.Delete(b.pendingKey)
-	})
-
-	if err != nil {
-		errFn(err)
 	}
 }
