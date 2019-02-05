@@ -40,19 +40,15 @@ func (l *Limiter) GetAndSave(info BucketInfo) (b *Bucket, err error) {
 		return
 	}
 
-	changed := false
 	if b == nil {
 		b, err = NewBucket(l.db, info)
 		l.Buckets[info.ID] = b
 		if err != nil {
 			return
 		}
-	} else {
-		changed = !reflect.DeepEqual(b.BucketInfo, info)
-	}
-
-	if changed {
+	} else if !reflect.DeepEqual(b.BucketInfo, info) {
 		err = b.Save(l.db)
 	}
+
 	return
 }
