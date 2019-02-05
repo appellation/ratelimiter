@@ -1,6 +1,7 @@
 package ratelimiter
 
 import (
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -17,6 +18,10 @@ var (
 	emptyUint32   uint32
 	emptyDuration time.Duration
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 func clearDB(t testing.TB, db *badger.DB) {
 	if db != nil {
@@ -99,7 +104,7 @@ func update(t *testing.T) {
 	})
 
 	set(t, func(txn *badger.Txn) error {
-		pending, err := bucket.IncrPending(txn, int(bucket.Size))
+		pending, err := bucket.Incr(txn, int(bucket.Size))
 		assert.NoError(t, err)
 		assert.Equal(t, bucket.Size, pending, "pending should be equal to bucket size")
 		return nil
@@ -117,6 +122,21 @@ func update(t *testing.T) {
 		pending, err := bucket.GetPending(txn)
 		assert.NoError(t, err)
 		assert.Equal(t, uint32(0), pending, "pending should be 0 after waiting")
+		return nil
+	})
+
+	count := rand.Intn(1000)
+	set(t, func(txn *badger.Txn) error {
+		pending, err := bucket.Incr(txn, count)
+		assert.NoError(t, err)
+		assert.Equal(t, count, int(pending), "pending should equal random count")
+		return nil
+	})
+
+	get(t, func(txn *badger.Txn) error {
+		pending, err := bucket.GetPending(txn)
+		assert.NoError(t, err)
+		assert.Equal(t, count, int(pending), "pending should equal random count on separate fetch")
 		return nil
 	})
 }
@@ -147,7 +167,7 @@ func BenchmarkBucket(b *testing.B) {
 	})
 
 	set(b, func(txn *badger.Txn) error {
-		_, err := bucket.IncrPending(txn, 500)
+		_, err := bucket.Incr(txn, 500)
 		return err
 	})
 

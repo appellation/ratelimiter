@@ -17,7 +17,7 @@ type BucketInfo struct {
 }
 
 // Save saves this bucket to disk
-func (i *BucketInfo) Save(db *badger.DB) error {
+func (i BucketInfo) Save(db *badger.DB) error {
 	return db.Update(func(txn *badger.Txn) error {
 		_, err := txn.Get(i.Key())
 		if err != nil && err != badger.ErrKeyNotFound {
@@ -31,7 +31,7 @@ func (i *BucketInfo) Save(db *badger.DB) error {
 }
 
 // Fetch loads this bucket from disk
-func (i *BucketInfo) Fetch(db *badger.DB) (err error) {
+func (i BucketInfo) Fetch(db *badger.DB) (err error) {
 	err = db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(i.Key())
 		if err != nil {

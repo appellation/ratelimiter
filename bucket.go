@@ -3,7 +3,6 @@ package ratelimiter
 import (
 	"encoding/binary"
 	"errors"
-	"math"
 	"time"
 
 	"github.com/dgraph-io/badger"
@@ -17,10 +16,25 @@ var (
 // Bucket represents a ratelimit bucket
 type Bucket struct {
 	BucketInfo
-	db         *badger.DB
-	pendingKey []byte
-	stopped    bool
-	stopChan   chan struct{}
+	db           *badger.DB
+	pendingKey   []byte
+	stopped      bool
+	stopChan     chan struct{}
+	errorHandler func(error)
+}
+
+// GetBucket attempts to fetch a bucket from disk; returns nil, nil if not found
+func GetBucket(db *badger.DB, id string) (*Bucket, error) {
+	info := BucketInfo{ID: id}
+	err := info.Fetch(db)
+	if err == badger.ErrKeyNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return NewBucket(db, info)
 }
 
 // NewBucket makes a new ratelimit bucket. Panics if size is 0.
@@ -35,7 +49,7 @@ func NewBucket(db *badger.DB, info BucketInfo) (*Bucket, error) {
 		pendingKey: []byte("pending." + info.ID),
 		stopped:    true,
 		stopChan:   make(chan struct{}, 1),
-	}, info.Save(db)
+	}, nil
 }
 
 // IsStarted returns whether this bucket is currently ticking
@@ -48,15 +62,7 @@ func (b *Bucket) Start() {
 	b.Stop()
 
 	b.stopped = false
-	errChan := make(chan error)
-	defer close(errChan)
-
-	go func() {
-		for err := range errChan {
-			b.ErrorHandler(err)
-		}
-	}()
-	b.tick(errChan)
+	b.tick(b.errorHandler)
 }
 
 // Stop closes this bucket
@@ -67,9 +73,14 @@ func (b *Bucket) Stop() {
 	}
 }
 
+// SetErrorHandler sets the error handler for this bucket
+func (b *Bucket) SetErrorHandler(fn func(error)) {
+	b.errorHandler = fn
+}
+
 // TimeoutAndIncr gets the timeout for the next request and increments the number of pending requests by 1
 func (b *Bucket) TimeoutAndIncr(txn *badger.Txn) (d time.Duration, err error) {
-	pending, err := b.IncrPending(txn, 1)
+	pending, err := b.Incr(txn, 1)
 	if err != nil {
 		return
 	}
@@ -115,8 +126,8 @@ func (b *Bucket) GetPending(txn *badger.Txn) (pending uint32, err error) {
 	return
 }
 
-// IncrPending increments the pending count by the specified amount
-func (b *Bucket) IncrPending(txn *badger.Txn, count int) (pending uint32, err error) {
+// Incr increments the pending count by the specified amount
+func (b *Bucket) Incr(txn *badger.Txn, count int) (pending uint32, err error) {
 	pending, err = b.GetPending(txn)
 	if err != nil {
 		return
@@ -155,7 +166,7 @@ func (b *Bucket) IncrPending(txn *badger.Txn, count int) (pending uint32, err er
 	return
 }
 
-func (b *Bucket) tick(errChan chan error) {
+func (b *Bucket) tick(errFn func(error)) {
 	var err error
 	ticker := time.NewTicker(b.Interval)
 	defer ticker.Stop()
@@ -167,22 +178,21 @@ loop:
 			break loop
 		case <-ticker.C:
 			err = b.db.Update(func(txn *badger.Txn) error {
-				_, err := b.IncrPending(txn, -int(b.Size))
+				_, err := b.Incr(txn, -int(b.Size))
 				return err
 			})
 
 			if err != nil {
-				errChan <- err
+				errFn(err)
 			}
 		}
 	}
 
 	err = b.db.Update(func(txn *badger.Txn) error {
-		_, err := b.IncrPending(txn, math.MinInt32)
-		return err
+		return txn.Delete(b.pendingKey)
 	})
 
 	if err != nil {
-		errChan <- err
+		errFn(err)
 	}
 }
