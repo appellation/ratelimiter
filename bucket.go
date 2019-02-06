@@ -25,8 +25,7 @@ type Bucket struct {
 
 // GetBucket attempts to fetch a bucket from disk; returns nil, nil if not found
 func GetBucket(db *badger.DB, id string) (*Bucket, error) {
-	info := BucketInfo{ID: id}
-	err := info.Fetch(db)
+	info, err := FetchBucketInfo(db, id)
 	if err == badger.ErrKeyNotFound {
 		return nil, nil
 	}

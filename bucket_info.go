@@ -16,6 +16,27 @@ type BucketInfo struct {
 	ErrorHandler func(error)
 }
 
+// FetchBucketInfo fetches bucket information from the database
+func FetchBucketInfo(db *badger.DB, id string) (i BucketInfo, err error) {
+	err = db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte("info." + i.ID))
+		if err != nil {
+			return err
+		}
+
+		v, err := item.ValueCopy([]byte{})
+		if err != nil {
+			return err
+		}
+
+		buf := bytes.NewReader(v)
+		gob.NewDecoder(buf).Decode(&i)
+		return nil
+	})
+
+	return
+}
+
 // Save saves this bucket to disk
 func (i BucketInfo) Save(db *badger.DB) error {
 	return db.Update(func(txn *badger.Txn) error {
@@ -28,27 +49,6 @@ func (i BucketInfo) Save(db *badger.DB) error {
 		gob.NewEncoder(buf).Encode(i)
 		return txn.Set(i.Key(), buf.Bytes())
 	})
-}
-
-// Fetch loads this bucket from disk
-func (i BucketInfo) Fetch(db *badger.DB) (err error) {
-	err = db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(i.Key())
-		if err != nil {
-			return err
-		}
-
-		v, err := item.ValueCopy([]byte{})
-		if err != nil {
-			return err
-		}
-
-		buf := bytes.NewReader(v)
-		gob.NewDecoder(buf).Decode(i)
-		return nil
-	})
-
-	return
 }
 
 // Key gets the key of this bucket
