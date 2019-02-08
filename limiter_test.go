@@ -14,12 +14,12 @@ func TestLimiter(t *testing.T) {
 	l := NewLimiter(db, 500)
 	assert.Equal(t, 0, l.Buckets.Len(), "buckets should be empty")
 
-	b, err := l.Get("testing")
+	b, err := l.Get([]byte("testing"))
 	assert.NoError(t, err)
 	assert.Nil(t, b, "bucket should be nil")
 
 	b, err = l.GetAndSave(BucketInfo{
-		ID:       "testing",
+		ID:       []byte("testing"),
 		Interval: 5 * time.Second,
 		Size:     5,
 	})

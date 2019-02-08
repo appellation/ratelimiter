@@ -10,16 +10,16 @@ import (
 
 // BucketInfo represents the ratelimit information of a bucket
 type BucketInfo struct {
-	ID           string
+	ID           []byte
 	Interval     time.Duration
 	Size         uint32
 	ErrorHandler func(error)
 }
 
 // FetchBucketInfo fetches bucket information from the database
-func FetchBucketInfo(db *badger.DB, id string) (i BucketInfo, err error) {
+func FetchBucketInfo(db *badger.DB, id []byte) (i BucketInfo, err error) {
 	err = db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte("info." + i.ID))
+		item, err := txn.Get(KeyBucketInfo.Make(id))
 		if err != nil {
 			return err
 		}
@@ -53,5 +53,5 @@ func (i BucketInfo) Save(db *badger.DB) error {
 
 // Key gets the key of this bucket
 func (i *BucketInfo) Key() []byte {
-	return []byte("info." + i.ID)
+	return KeyBucketInfo.Make(i.ID)
 }

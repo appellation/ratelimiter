@@ -27,7 +27,7 @@ func NewLimiter(db *badger.DB, size int) *Limiter {
 }
 
 // Get gets a bucket by ID
-func (l *Limiter) Get(id string) (b *Bucket, err error) {
+func (l *Limiter) Get(id []byte) (b *Bucket, err error) {
 	v, ok := l.Buckets.Get(id)
 	if ok {
 		b = v.(*Bucket)

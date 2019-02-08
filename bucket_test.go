@@ -53,7 +53,7 @@ func createDB(t testing.TB) *badger.DB {
 
 func createBucket(t testing.TB, db *badger.DB) *Bucket {
 	bucket, err := NewBucket(db, BucketInfo{
-		ID:       "testing",
+		ID:       []byte("testing"),
 		Interval: 5 * time.Second,
 		Size:     5,
 		ErrorHandler: func(err error) {

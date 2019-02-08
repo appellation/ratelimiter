@@ -18,13 +18,14 @@ type Bucket struct {
 	BucketInfo
 	db           *badger.DB
 	pendingKey   []byte
-	stopped      bool
+	lastTick     time.Time
+	started      bool
 	stopChan     chan struct{}
 	errorHandler func(error)
 }
 
 // GetBucket attempts to fetch a bucket from disk; returns nil, nil if not found
-func GetBucket(db *badger.DB, id string) (*Bucket, error) {
+func GetBucket(db *badger.DB, id []byte) (*Bucket, error) {
 	info, err := FetchBucketInfo(db, id)
 	if err == badger.ErrKeyNotFound {
 		return nil, nil
@@ -45,30 +46,21 @@ func NewBucket(db *badger.DB, info BucketInfo) (*Bucket, error) {
 	return &Bucket{
 		BucketInfo: info,
 		db:         db,
-		pendingKey: []byte("pending." + info.ID),
-		stopped:    true,
+		pendingKey: KeyBucketPending.Make(info.ID),
 		stopChan:   make(chan struct{}, 1),
 	}, nil
-}
-
-// IsStarted returns whether this bucket is currently ticking
-func (b *Bucket) IsStarted() bool {
-	return !b.stopped
 }
 
 // Start starts the bucket
 func (b *Bucket) Start() {
 	b.Stop()
-
-	b.stopped = false
 	b.tick(b.errorHandler)
 }
 
 // Stop closes this bucket
 func (b *Bucket) Stop() {
-	if b.IsStarted() {
+	if b.started {
 		b.stopChan <- struct{}{}
-		b.stopped = true
 	}
 }
 
@@ -85,7 +77,7 @@ func (b *Bucket) TimeoutAndIncr(txn *badger.Txn) (d time.Duration, err error) {
 	}
 
 	// since "pending" is already incremented, this is pending-1
-	d = b.TimeoutWithPending(pending - 1)
+	d = b.UnlocksIn(pending - 1)
 	return
 }
 
@@ -96,14 +88,18 @@ func (b *Bucket) Timeout(txn *badger.Txn) (d time.Duration, err error) {
 		return
 	}
 
-	d = b.TimeoutWithPending(pending)
+	d = b.UnlocksIn(pending)
 	return
 }
 
-// TimeoutWithPending gets the timeout for the next request, given a number of pending requests
-func (b *Bucket) TimeoutWithPending(pending uint32) time.Duration {
-	bucketCount := time.Duration(pending / b.Size)
-	return b.Interval * bucketCount
+// UnlocksIn determines how long until this bucket unlocks
+func (b *Bucket) UnlocksIn(pending uint32) time.Duration {
+	if !b.started {
+		return time.Duration(0)
+	}
+
+	// pending/size represents how many times the bucket has been filled
+	return time.Now().Sub(b.lastTick) + b.Interval*time.Duration(pending/b.Size)
 }
 
 // GetPending returns the number of pending requests
@@ -153,7 +149,7 @@ func (b *Bucket) Incr(txn *badger.Txn, count int) (pending uint32, err error) {
 		b.Stop()
 		err = txn.Delete(b.pendingKey)
 	} else {
-		if !b.IsStarted() {
+		if !b.started {
 			go b.Start()
 		}
 
@@ -166,17 +162,20 @@ func (b *Bucket) Incr(txn *badger.Txn, count int) (pending uint32, err error) {
 }
 
 func (b *Bucket) tick(errFn func(error)) {
-	var err error
 	ticker := time.NewTicker(b.Interval)
 	defer ticker.Stop()
+
+	b.started = true
+	b.lastTick = time.Now()
 
 loop:
 	for {
 		select {
 		case <-b.stopChan:
 			break loop
-		case <-ticker.C:
-			err = b.db.Update(func(txn *badger.Txn) error {
+		case t := <-ticker.C:
+			b.lastTick = t
+			err := b.db.Update(func(txn *badger.Txn) error {
 				_, err := b.Incr(txn, -int(b.Size))
 				return err
 			})
@@ -186,4 +185,6 @@ loop:
 			}
 		}
 	}
+
+	b.started = false
 }
