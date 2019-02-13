@@ -11,9 +11,7 @@ func TestLimiter(t *testing.T) {
 	db := createDB(t)
 	defer clearDB(t, db)
 
-	l := NewLimiter(db, 500)
-	assert.Equal(t, 0, l.Buckets.Len(), "buckets should be empty")
-
+	l := New(db)
 	b, err := l.Get([]byte("testing"))
 	assert.NoError(t, err)
 	assert.Nil(t, b, "bucket should be nil")
@@ -25,5 +23,4 @@ func TestLimiter(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.IsType(t, &Bucket{}, b, "bucket should be a bucket")
-	assert.Equal(t, 1, l.Buckets.Len(), "buckets should have 1 element")
 }

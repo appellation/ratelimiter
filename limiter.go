@@ -1,44 +1,27 @@
 package ratelimiter
 
 import (
-	"reflect"
+	"context"
+	"log"
 
 	"github.com/dgraph-io/badger"
-	lru "github.com/hashicorp/golang-lru"
 )
+
+//go:generate protoc ratelimiter.proto --go_out=plugins=grpc:.
 
 // Limiter represents a collection of ratelimit buckets
 type Limiter struct {
-	db      *badger.DB
-	Buckets *lru.Cache
+	db *badger.DB
 }
 
-// NewLimiter makes a new limiter
-func NewLimiter(db *badger.DB, size int) *Limiter {
-	cache, err := lru.New(size)
-	if err != nil {
-		panic(err)
-	}
-
-	return &Limiter{
-		db:      db,
-		Buckets: cache,
-	}
+// New makes a new limiter
+func New(db *badger.DB) *Limiter {
+	return &Limiter{db}
 }
 
 // Get gets a bucket by ID
 func (l *Limiter) Get(id []byte) (b *Bucket, err error) {
-	v, ok := l.Buckets.Get(id)
-	if ok {
-		b = v.(*Bucket)
-	} else {
-		b, err = GetBucket(l.db, id)
-		if b != nil && err != nil {
-			l.Buckets.Add(id, b)
-		}
-	}
-
-	return
+	return GetBucket(l.db, id)
 }
 
 // GetAndSave gets a bucket by ID and saves its properties to disk (if changed or not previously existant)
@@ -50,13 +33,51 @@ func (l *Limiter) GetAndSave(info BucketInfo) (b *Bucket, err error) {
 
 	if b == nil {
 		b, err = NewBucket(l.db, info)
-		l.Buckets.Add(info.ID, b)
 		if err != nil {
 			return
 		}
-	} else if !reflect.DeepEqual(b.BucketInfo, info) {
+	} else if (b.Interval != info.Interval && info.Interval != 0) ||
+		(b.Size != info.Size && info.Size != 0) {
 		err = b.Save(l.db)
 	}
 
+	return
+}
+
+// Fetch fetches the gateway for a given request
+func (l *Limiter) Fetch(ctx context.Context, req *Request) (res *Response, err error) {
+	b, err := l.GetAndSave(BucketInfo{
+		ID:       req.GetId(),
+		Size:     req.GetSize(),
+		Interval: durationToNative(req.GetInterval()),
+	})
+	if err != nil {
+		return
+	}
+
+	i := req.GetIncr()
+	willIncr := i != 0
+
+	log.Printf("bucket %v", b)
+
+	txn := b.Txn(willIncr)
+	defer b.Commit(txn)
+
+	timeout, err := b.Timeout(txn)
+	if err != nil {
+		return
+	}
+
+	if willIncr {
+		_, err = b.Incr(txn, int(i))
+		if err != nil {
+			return
+		}
+	}
+
+	res = &Response{
+		Id:      b.ID,
+		WaitFor: durationToPB(timeout),
+	}
 	return
 }

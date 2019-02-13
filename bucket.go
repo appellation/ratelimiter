@@ -51,6 +51,17 @@ func NewBucket(db *badger.DB, info BucketInfo) (*Bucket, error) {
 	}, nil
 }
 
+// Txn checks out a badger transaction
+func (b *Bucket) Txn(update bool) *badger.Txn {
+	return b.db.NewTransaction(update)
+}
+
+// Commit discards and commits the given badger transaction
+func (b *Bucket) Commit(txn *badger.Txn) error {
+	txn.Discard()
+	return txn.Commit(nil)
+}
+
 // Start starts the bucket
 func (b *Bucket) Start() {
 	b.Stop()

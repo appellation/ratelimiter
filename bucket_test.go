@@ -99,8 +99,10 @@ func TestBucket(t *testing.T) {
 		return nil
 	})
 
+	var endIncr time.Time
 	set(t, func(txn *badger.Txn) error {
 		pending, err := bucket.Incr(txn, int(bucket.Size))
+		endIncr = time.Now()
 		assert.NoError(t, err)
 		assert.Equal(t, bucket.Size, pending, "pending should be equal to bucket size")
 		return nil
@@ -108,8 +110,11 @@ func TestBucket(t *testing.T) {
 
 	get(t, func(txn *badger.Txn) error {
 		timeout, err := bucket.Timeout(txn)
+		queryLatency := time.Now().Sub(endIncr)
+		t.Logf("query latency: %v", queryLatency)
+
 		assert.NoError(t, err)
-		assert.Equal(t, bucket.Interval, timeout, "bucket timeout should be equal to the interval")
+		assert.Equal(t, bucket.Interval+queryLatency, timeout, "bucket timeout should be equal to the interval + query latency")
 		return nil
 	})
 

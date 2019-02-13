@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package ratelimiter;
+import "google/protobuf/duration.proto";
+
+service Ratelimiter {
+	rpc Fetch(Request) returns (Response);
+}
+
+message Request {
+	bytes id = 1;
+	int32 incr = 2;
+	uint32 size = 3;
+	google.protobuf.Duration interval = 4;
+}
+
+message Response {
+	bytes id = 1;
+	google.protobuf.Duration wait_for = 2;
+}
