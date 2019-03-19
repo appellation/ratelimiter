@@ -2,7 +2,6 @@ package ratelimiter
 
 import (
 	"context"
-	"log"
 
 	"github.com/dgraph-io/badger"
 )
@@ -57,8 +56,6 @@ func (l *Limiter) Fetch(ctx context.Context, req *Request) (res *Response, err e
 
 	i := req.GetIncr()
 	willIncr := i != 0
-
-	log.Printf("bucket %v", b)
 
 	txn := b.Txn(willIncr)
 	defer b.Commit(txn)
